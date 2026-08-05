@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 
 from . import auth, db
-from .config import COOKIE_NAME, COOKIE_SECURE, JWT_EXPIRE_MINUTES
+from .config import COOKIE_NAME, COOKIE_SAMESITE, COOKIE_SECURE, CORS_ORIGINS, JWT_EXPIRE_MINUTES
 from .pdf_parser import parse_statement
 from .categorizer import categorize_rows
 from .analytics import build_summary
@@ -32,7 +32,7 @@ app = FastAPI(title="Ledger API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -56,7 +56,7 @@ def _set_auth_cookie(response: Response, user_id: int):
     token = auth.create_access_token(user_id)
     response.set_cookie(
         key=COOKIE_NAME, value=token, httponly=True, secure=COOKIE_SECURE,
-        samesite="lax", max_age=JWT_EXPIRE_MINUTES * 60,
+        samesite=COOKIE_SAMESITE, max_age=JWT_EXPIRE_MINUTES * 60,
     )
 
 
