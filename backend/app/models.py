@@ -141,6 +141,10 @@ class StatementDashboard(BaseModel):
     summary: Summary
 
 
+class RenameStatementRequest(BaseModel):
+    filename: str
+
+
 class User(BaseModel):
     id: int
     username: str
