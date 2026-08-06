@@ -19,7 +19,7 @@ from .categorizer import CATEGORY_RULES
 from .dateutil import normalize_date
 from .models import (
     Account, AccountDashboard, Budget, BudgetRequest, CategorySpend, LoginRequest,
-    MonthCell, PlanSummary, Profile, SignupRequest, StatementDashboard,
+    MonthCell, PlanSummary, Profile, RenameStatementRequest, SignupRequest, StatementDashboard,
     StatementSummary, Transaction, UpdateAccountRequest, UpdateCategoryRequest, User,
 )
 
@@ -293,7 +293,9 @@ def statement_months(year: str, current_user: dict = Depends(auth.get_current_us
 
 
 @app.get("/api/statements", response_model=List[StatementSummary])
-def list_statements(month: str, current_user: dict = Depends(auth.get_current_user)):
+def list_statements(month: Optional[str] = None, current_user: dict = Depends(auth.get_current_user)):
+    # No month = every statement the user has ever uploaded, most recent first —
+    # what the Analysis tab's upload-on-top/list-below menu shows by default.
     return [_statement_to_model(s) for s in db.list_statements(current_user["id"], month)]
 
 
@@ -315,6 +317,18 @@ def get_statement_dashboard(statement_id: int, current_user: dict = Depends(auth
         transactions=transactions,
         summary=summary,
     )
+
+
+@app.patch("/api/statements/{statement_id}")
+def rename_statement(
+    statement_id: int, body: RenameStatementRequest, current_user: dict = Depends(auth.get_current_user)
+):
+    new_name = body.filename.strip()
+    if not new_name:
+        raise HTTPException(400, "Name can't be empty.")
+    if not db.rename_statement(current_user["id"], statement_id, new_name):
+        raise HTTPException(404, "Statement not found.")
+    return {"status": "renamed"}
 
 
 @app.delete("/api/statements/{statement_id}")

@@ -416,11 +416,14 @@ def statements_by_month(user_id: int, year: str) -> List[Dict]:
             return [dict(r) for r in cur.fetchall()]
 
 
-def list_statements(user_id: int, month: str) -> List[Dict]:
+def list_statements(user_id: int, month: Optional[str] = None) -> List[Dict]:
+    """All of a user's uploaded statements, or just one month's if `month` is given."""
     with get_conn() as conn:
         with conn.cursor() as cur:
+            month_filter = "AND s.month_bucket = %s" if month else ""
+            params = (user_id, month) if month else (user_id,)
             cur.execute(
-                """SELECT s.id, s.filename, s.month_bucket, s.period_start, s.period_end,
+                f"""SELECT s.id, s.filename, s.month_bucket, s.period_start, s.period_end,
                           s.uploaded_at, a.label AS account_label, a.bank_name,
                           a.account_number_masked,
                           COUNT(st.transaction_id) AS transaction_count,
@@ -430,10 +433,10 @@ def list_statements(user_id: int, month: str) -> List[Dict]:
                    JOIN accounts a ON a.id = s.account_id
                    LEFT JOIN statement_transactions st ON st.statement_id = s.id
                    LEFT JOIN transactions t ON t.id = st.transaction_id
-                   WHERE s.user_id = %s AND s.month_bucket = %s
+                   WHERE s.user_id = %s {month_filter}
                    GROUP BY s.id, a.label, a.bank_name, a.account_number_masked
                    ORDER BY s.uploaded_at DESC""",
-                (user_id, month),
+                params,
             )
             return [dict(r) for r in cur.fetchall()]
 
@@ -462,6 +465,17 @@ def get_statement_transactions(statement_id: int) -> List[Dict]:
                 (statement_id,),
             )
             return [dict(r) for r in cur.fetchall()]
+
+
+def rename_statement(user_id: int, statement_id: int, filename: str) -> bool:
+    """Just relabels the document - doesn't touch file_hash, so dedup on re-upload is unaffected."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE statements SET filename = %s WHERE id = %s AND user_id = %s",
+                (filename, statement_id, user_id),
+            )
+            return cur.rowcount > 0
 
 
 def delete_statement(user_id: int, statement_id: int) -> bool:
