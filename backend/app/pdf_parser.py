@@ -481,11 +481,17 @@ def _extract_via_text(pdf) -> List[Dict]:
     return rows
 
 
-def parse_statement(file_path: str) -> Dict:
-    """Returns {"rows": [...], "warnings": [...], "account_info": {...}}"""
+def parse_statement(file_path: str, password: Optional[str] = None) -> Dict:
+    """
+    Returns {"rows": [...], "warnings": [...], "account_info": {...}}
+
+    Raises pdfminer.pdfdocument.PDFPasswordIncorrect if the PDF is
+    password-protected and `password` is missing or wrong - the caller
+    decides how to surface that (see main.py's upload endpoint).
+    """
     warnings: List[str] = []
     rows: List[Dict] = []
-    with pdfplumber.open(file_path) as pdf:
+    with pdfplumber.open(file_path, password=password or "") as pdf:
         account_info = extract_account_info(pdf)
         # Word-position reconstruction first: it handles multi-line narrations
         # regardless of whether the statement rules its rows. Table and raw-text
