@@ -100,6 +100,28 @@ ALTER TABLE budgets ADD COLUMN IF NOT EXISTS entry_type TEXT NOT NULL DEFAULT 'e
 ALTER TABLE budgets DROP CONSTRAINT IF EXISTS budgets_user_id_month_category_key;
 CREATE UNIQUE INDEX IF NOT EXISTS budgets_unique_entry
     ON budgets (user_id, month, category, entry_type);
+
+-- Recurring loan payment: no "month" of its own - due_day repeats every
+-- month until the EMI is deleted (e.g. the loan is paid off).
+CREATE TABLE IF NOT EXISTS emis (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    monthly_amount DOUBLE PRECISION NOT NULL DEFAULT 0,
+    due_day INTEGER NOT NULL CHECK (due_day BETWEEN 1 AND 31),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One-off reminder pinned to a specific calendar date.
+CREATE TABLE IF NOT EXISTS reminders (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    due_date DATE NOT NULL,
+    note TEXT NOT NULL DEFAULT '',
+    done BOOLEAN NOT NULL DEFAULT FALSE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
@@ -591,6 +613,73 @@ def delete_budget(user_id: int, budget_id: int) -> bool:
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM budgets WHERE id = %s AND user_id = %s", (budget_id, user_id))
+            return cur.rowcount > 0
+
+
+# ---- EMIs & reminders: the calendar tab ----
+
+def list_emis(user_id: int) -> List[Dict]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM emis WHERE user_id = %s ORDER BY due_day", (user_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def create_emi(user_id: int, name: str, monthly_amount: float, due_day: int) -> Dict:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO emis (user_id, name, monthly_amount, due_day)
+                   VALUES (%s, %s, %s, %s) RETURNING *""",
+                (user_id, name, monthly_amount, due_day),
+            )
+            return dict(cur.fetchone())
+
+
+def delete_emi(user_id: int, emi_id: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM emis WHERE id = %s AND user_id = %s", (emi_id, user_id))
+            return cur.rowcount > 0
+
+
+def list_reminders(user_id: int) -> List[Dict]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM reminders WHERE user_id = %s ORDER BY due_date", (user_id,),
+            )
+            return [dict(r) for r in cur.fetchall()]
+
+
+def create_reminder(user_id: int, title: str, due_date: str, note: str) -> Dict:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO reminders (user_id, title, due_date, note)
+                   VALUES (%s, %s, %s, %s) RETURNING *""",
+                (user_id, title, due_date, note),
+            )
+            return dict(cur.fetchone())
+
+
+def set_reminder_done(user_id: int, reminder_id: int, done: bool) -> Optional[Dict]:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE reminders SET done = %s WHERE id = %s AND user_id = %s RETURNING *""",
+                (done, reminder_id, user_id),
+            )
+            row = cur.fetchone()
+            return dict(row) if row else None
+
+
+def delete_reminder(user_id: int, reminder_id: int) -> bool:
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM reminders WHERE id = %s AND user_id = %s", (reminder_id, user_id))
             return cur.rowcount > 0
 
 
