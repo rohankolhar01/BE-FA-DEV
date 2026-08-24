@@ -8,6 +8,7 @@ from typing import List, Optional
 from fastapi import Depends, FastAPI, UploadFile, File, Form, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from pdfminer.pdfdocument import PDFPasswordIncorrect
 
 from . import auth, db
 from .config import COOKIE_NAME, COOKIE_SAMESITE, COOKIE_SECURE, CORS_ORIGINS, JWT_EXPIRE_MINUTES
@@ -174,6 +175,7 @@ def delete_account(account_id: str, current_user: dict = Depends(auth.get_curren
 async def upload_statement(
     file: UploadFile = File(...),
     account_id: Optional[str] = Form(None),
+    password: Optional[str] = Form(None),
     current_user: dict = Depends(auth.get_current_user),
 ):
     if not file.filename.lower().endswith(".pdf"):
@@ -187,7 +189,14 @@ async def upload_statement(
         tmp_path = tmp.name
 
     try:
-        parsed = parse_statement(tmp_path)
+        try:
+            parsed = parse_statement(tmp_path, password=password)
+        except PDFPasswordIncorrect:
+            # 428 (Precondition Required) so the frontend can tell "needs a
+            # password" apart from every other upload failure and prompt for one.
+            if password:
+                raise HTTPException(428, "That password didn't work. Try again.")
+            raise HTTPException(428, "This PDF is password-protected. Enter the password to continue.")
     finally:
         os.remove(tmp_path)
 
