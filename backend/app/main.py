@@ -19,8 +19,9 @@ from .exporter import export_csv, export_excel
 from .categorizer import CATEGORY_RULES
 from .dateutil import normalize_date
 from .models import (
-    Account, AccountDashboard, Budget, BudgetRequest, CategorySpend, LoginRequest,
-    MonthCell, PlanSummary, Profile, RenameStatementRequest, SignupRequest, StatementDashboard,
+    Account, AccountDashboard, Budget, BudgetRequest, CategorySpend, EMI, EMIRequest, LoginRequest,
+    MonthCell, PlanSummary, Profile, Reminder, ReminderDoneRequest, ReminderRequest,
+    RenameStatementRequest, SignupRequest, StatementDashboard,
     StatementSummary, Transaction, UpdateAccountRequest, UpdateCategoryRequest, User,
 )
 
@@ -413,6 +414,61 @@ def save_budget(body: BudgetRequest, current_user: dict = Depends(auth.get_curre
 def remove_budget(budget_id: int, current_user: dict = Depends(auth.get_current_user)):
     if not db.delete_budget(current_user["id"], budget_id):
         raise HTTPException(404, "Budget not found.")
+    return {"status": "deleted"}
+
+
+# ---- EMIs & reminders: the calendar tab ----
+
+@app.get("/api/emis", response_model=List[EMI])
+def list_emis(current_user: dict = Depends(auth.get_current_user)):
+    return db.list_emis(current_user["id"])
+
+
+@app.post("/api/emis", response_model=EMI)
+def create_emi(body: EMIRequest, current_user: dict = Depends(auth.get_current_user)):
+    if body.monthly_amount < 0:
+        raise HTTPException(400, "Monthly amount cannot be negative.")
+    if not 1 <= body.due_day <= 31:
+        raise HTTPException(400, "Due day must be between 1 and 31.")
+    if not body.name.strip():
+        raise HTTPException(400, "Name can't be empty.")
+    return db.create_emi(current_user["id"], body.name.strip(), body.monthly_amount, body.due_day)
+
+
+@app.delete("/api/emis/{emi_id}")
+def remove_emi(emi_id: int, current_user: dict = Depends(auth.get_current_user)):
+    if not db.delete_emi(current_user["id"], emi_id):
+        raise HTTPException(404, "EMI not found.")
+    return {"status": "deleted"}
+
+
+@app.get("/api/reminders", response_model=List[Reminder])
+def list_reminders(current_user: dict = Depends(auth.get_current_user)):
+    return [{**r, "due_date": str(r["due_date"])} for r in db.list_reminders(current_user["id"])]
+
+
+@app.post("/api/reminders", response_model=Reminder)
+def create_reminder(body: ReminderRequest, current_user: dict = Depends(auth.get_current_user)):
+    if not body.title.strip():
+        raise HTTPException(400, "Title can't be empty.")
+    row = db.create_reminder(current_user["id"], body.title.strip(), body.due_date, body.note)
+    return {**row, "due_date": str(row["due_date"])}
+
+
+@app.patch("/api/reminders/{reminder_id}", response_model=Reminder)
+def update_reminder(
+    reminder_id: int, body: ReminderDoneRequest, current_user: dict = Depends(auth.get_current_user)
+):
+    row = db.set_reminder_done(current_user["id"], reminder_id, body.done)
+    if not row:
+        raise HTTPException(404, "Reminder not found.")
+    return {**row, "due_date": str(row["due_date"])}
+
+
+@app.delete("/api/reminders/{reminder_id}")
+def remove_reminder(reminder_id: int, current_user: dict = Depends(auth.get_current_user)):
+    if not db.delete_reminder(current_user["id"], reminder_id):
+        raise HTTPException(404, "Reminder not found.")
     return {"status": "deleted"}
 
 

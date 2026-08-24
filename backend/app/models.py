@@ -145,6 +145,37 @@ class RenameStatementRequest(BaseModel):
     filename: str
 
 
+class EMI(BaseModel):
+    id: int
+    name: str
+    monthly_amount: float = 0.0
+    due_day: int   # 1-31, repeats every month
+
+
+class EMIRequest(BaseModel):
+    name: str
+    monthly_amount: float = 0.0
+    due_day: int
+
+
+class Reminder(BaseModel):
+    id: int
+    title: str
+    due_date: str  # 'YYYY-MM-DD'
+    note: str = ""
+    done: bool = False
+
+
+class ReminderRequest(BaseModel):
+    title: str
+    due_date: str
+    note: str = ""
+
+
+class ReminderDoneRequest(BaseModel):
+    done: bool
+
+
 class User(BaseModel):
     id: int
     username: str
